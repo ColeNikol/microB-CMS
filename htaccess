@@ -1,0 +1,97 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    # -------------------------------------
+    # Force HTTPS (301 Permanent Redirect)
+    # -------------------------------------
+    RewriteCond %{HTTPS} off
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
+    # -------------------------------------
+    # Remove trailing slashes (301 Redirect)
+    # -------------------------------------
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.+)/$ /$1 [R=301,L]
+
+    # -------------------------------------
+    # Redirect legacy query strings to clean URLs
+    # Example: index.php?post=hello-world → /hello-world
+    # -------------------------------------
+    RewriteCond %{QUERY_STRING} ^post=([^&]+)$
+    RewriteRule ^index\.php$ /%1? [R=301,L]
+
+    RewriteCond %{QUERY_STRING} ^tag=([^&]+)$
+    RewriteRule ^index\.php$ /tag/%1? [R=301,L]
+
+    RewriteCond %{QUERY_STRING} ^search=([^&]+)$
+    RewriteRule ^index\.php$ /search/%1? [R=301,L]
+
+    # -------------------------------------
+    # Rewrite all other requests to index.php
+    # (except real files or directories)
+    # -------------------------------------
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ index.php [L,QSA]
+</IfModule>
+
+# -------------------------------------
+# Security Headers
+# -------------------------------------
+<IfModule mod_headers.c>
+    Header always set X-Frame-Options "DENY"
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# -------------------------------------
+# Gzip Compression
+# -------------------------------------
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/xml application/xhtml+xml
+</IfModule>
+
+# -------------------------------------
+# Browser Caching (Expires Headers)
+# -------------------------------------
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/jpg "access plus 1 month"
+    ExpiresByType image/jpeg "access plus 1 month"
+    ExpiresByType image/gif "access plus 1 month"
+    ExpiresByType image/png "access plus 1 month"
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/pdf "access plus 1 month"
+    ExpiresByType text/javascript "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    ExpiresByType image/x-icon "access plus 1 year"
+    ExpiresDefault "access plus 2 days"
+</IfModule>
+
+# -------------------------------------
+# Block Sensitive Files
+# -------------------------------------
+<FilesMatch "\.(htaccess|htpasswd|ini|log|sh|sql)$">
+    Require all denied
+</FilesMatch>
+
+# -------------------------------------
+# Disable Directory Listing
+# -------------------------------------
+Options -Indexes
+
+# -------------------------------------
+# PHP Handler (from cPanel)
+# -------------------------------------
+<IfModule mime_module>
+    AddHandler application/x-httpd-ea-php74___lsphp .php .php7 .phtml
+</IfModule>
+
+# php -- BEGIN cPanel-generated handler, do not edit
+# Set the “ea-php74” package as the default “PHP” programming language.
+<IfModule mime_module>
+  AddHandler application/x-httpd-ea-php74___lsphp .php .php7 .phtml
+</IfModule>
+# php -- END cPanel-generated handler, do not edit
