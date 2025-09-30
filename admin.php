@@ -1,5 +1,5 @@
 <?php
-// Admin Dashboard for MicroB CMS
+// Admin Dashboard for MicroBlog
 session_start();
 
 // Configuration
@@ -212,7 +212,7 @@ if (file_exists(POSTS_JSON)) {
 // Load settings
 $settings = [
     'site_title' => 'MicroB CMS - Responsive Blog System',
-    'site_description' => 'A minimalistic responsive blog system built with modern web technologies.',
+    'site_description' => 'A minimal responsive blog system built with modern web technologies.',
     'hero_custom_code' => ''
 ];
 
@@ -529,7 +529,7 @@ $stats = getDashboardStats();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard - MicroB</title>
+    <title>Admin Dashboard - MicroBlog</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -709,7 +709,7 @@ $stats = getDashboardStats();
         <div class="max-w-md w-full space-y-8 bg-white p-8 rounded-lg shadow-md">
             <div>
                 <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
-                    MicroB CMS Admin
+                    MicroBlog Admin
                 </h2>
                 <p class="mt-2 text-center text-sm text-gray-600">
                     Sign in to manage your blog
@@ -744,7 +744,7 @@ $stats = getDashboardStats();
         <!-- Sidebar -->
         <div class="sidebar bg-gray-800 text-white">
             <div class="p-4 border-b border-gray-700">
-                <h1 class="text-xl font-bold">MicroB Admin</h1>
+                <h1 class="text-xl font-bold">MicroBlog Admin</h1>
                 <p class="text-sm text-gray-400">Content Management System</p>
             </div>
             <nav class="p-4">
@@ -991,7 +991,7 @@ $stats = getDashboardStats();
                                 <input type="text" name="featured_image" id="featured_image" 
                                        value="<?php echo $editing_post ? htmlspecialchars($editing_post['featuredImage'] ?? '') : ''; ?>"
                                        class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-150">
-                                <p class="mt-1 text-sm text-gray-500">You can upload an image in the Media Library first and copy the image URL here</p>
+                                <p class="mt-1 text-sm text-gray-500">You can upload an image in the Media Library below and copy the URL here</p>
                             </div>
                             
                             <!-- Enhanced Custom HTML Editor -->
@@ -1182,201 +1182,153 @@ $stats = getDashboardStats();
     </div>
 
     <!-- JavaScript for Enhanced Custom Editor -->
-<script>
-    let isCodeView = false;
-    
-    function formatText(command) {
-        document.execCommand(command, false, null);
-        updateEditorFocus();
-    }
-    
-    function insertHeading(level) {
-        document.execCommand('formatBlock', false, `<h${level}>`);
-        updateEditorFocus();
-    }
-    
-    function insertList(type) {
-        document.execCommand(type === 'ul' ? 'insertUnorderedList' : 'insertOrderedList', false, null);
-        updateEditorFocus();
-    }
-    
-    function insertLink() {
-        // Create enhanced link dialog
-        const url = prompt("Enter URL:", "https://");
-        if (url) {
-            const openNewTab = confirm("Open in new tab?");
-            const addNoFollow = confirm("Add rel='nofollow'?");
-            const addNoOpener = confirm("Add rel='noopener'?");
-            
-            let linkAttributes = '';
-            let relAttributes = [];
-            
-            if (openNewTab) {
-                linkAttributes += ' target="_blank"';
-            }
-            
-            if (addNoFollow) {
-                relAttributes.push('nofollow');
-            }
-            
-            if (addNoOpener) {
-                relAttributes.push('noopener');
-            }
-            
-            if (relAttributes.length > 0) {
-                linkAttributes += ` rel="${relAttributes.join(' ')}"`;
-            }
-            
-            const linkText = prompt("Link text (optional):", url) || url;
-            
-            document.execCommand('insertHTML', false, `<a href="${url}"${linkAttributes}>${linkText}</a>`);
-        }
-        updateEditorFocus();
-    }
-    
-    function insertImage() {
-        // Create enhanced image dialog
-        const url = prompt("Enter image URL:", "https://");
-        if (url) {
-            const altText = prompt("Enter ALT text (recommended for accessibility):", "");
-            const imageTitle = prompt("Enter image title (optional):", "");
-            
-            let imageAttributes = '';
-            
-            if (altText) {
-                imageAttributes += ` alt="${altText.replace(/"/g, '&quot;')}"`;
-            }
-            
-            if (imageTitle) {
-                imageAttributes += ` title="${imageTitle.replace(/"/g, '&quot;')}"`;
-            }
-            
-            // Add basic styling
-            imageAttributes += ' style="max-width: 100%; height: auto; border-radius: 0.5em; margin: 1em 0;"';
-            
-            document.execCommand('insertHTML', false, `<img src="${url}"${imageAttributes}>`);
-        }
-        updateEditorFocus();
-    }
-    
-    function insertCode() {
-        const code = prompt("Enter code:");
-        if (code) {
-            document.execCommand('insertHTML', false, `<pre><code>${code}</code></pre>`);
-        }
-        updateEditorFocus();
-    }
-    
-    function insertHTML() {
-        const html = prompt("Enter HTML code:");
-        if (html) {
-            document.execCommand('insertHTML', false, html);
-        }
-        updateEditorFocus();
-    }
-    
-    function insertScript() {
-        const script = prompt("Enter JavaScript code:");
-        if (script) {
-            document.execCommand('insertHTML', false, `<script>${script}<\/script>`);
-        }
-        updateEditorFocus();
-    }
-    
-    function toggleView() {
-        const editor = document.getElementById('editor');
-        const toggleBtn = document.getElementById('toggleViewBtn');
+    <script>
+        let isCodeView = false;
         
-        if (!isCodeView) {
-            // Switch to code view
-            editor.textContent = editor.innerHTML;
-            editor.style.fontFamily = 'Courier New, monospace';
-            editor.style.fontSize = '14px';
-            editor.style.backgroundColor = '#1f2937';
-            editor.style.color = '#f9fafb';
-            toggleBtn.innerHTML = '<i class="fas fa-eye-slash"></i>';
-            toggleBtn.title = 'Switch to WYSIWYG View';
-            isCodeView = true;
-        } else {
-            // Switch back to WYSIWYG view
-            editor.innerHTML = editor.textContent;
-            editor.style.fontFamily = 'Inter, sans-serif';
-            editor.style.fontSize = '16px';
-            editor.style.backgroundColor = 'white';
-            editor.style.color = 'inherit';
-            toggleBtn.innerHTML = '<i class="fas fa-eye"></i>';
-            toggleBtn.title = 'Switch to Code View';
-            isCodeView = false;
+        function formatText(command) {
+            document.execCommand(command, false, null);
+            updateEditorFocus();
         }
-        updateEditorFocus();
-    }
-    
-    function clearEditor() {
-        if (confirm('Are you sure you want to clear the editor? This cannot be undone.')) {
-            document.getElementById('editor').innerHTML = '<p>Start writing your post here...</p>';
-        }
-        updateEditorFocus();
-    }
-    
-    function updateEditorFocus() {
-        const editor = document.getElementById('editor');
-        editor.focus();
         
-        // Scroll to cursor position
-        const range = document.createRange();
-        const selection = window.getSelection();
-        range.selectNodeContents(editor);
-        range.collapse(false);
-        selection.removeAllRanges();
-        selection.addRange(range);
-    }
-    
-    function prepareSubmit() {
-        const editor = document.getElementById('editor');
-        document.getElementById('hidden-content').value = editor.innerHTML;
-        return true;
-    }
-    
-    // Enhanced editor initialization
-    document.addEventListener('DOMContentLoaded', function() {
-        const editor = document.getElementById('editor');
-        if (editor) {
-            // Set initial focus
+        function insertHeading(level) {
+            document.execCommand('formatBlock', false, `<h${level}>`);
+            updateEditorFocus();
+        }
+        
+        function insertList(type) {
+            document.execCommand(type === 'ul' ? 'insertUnorderedList' : 'insertOrderedList', false, null);
+            updateEditorFocus();
+        }
+        
+        function insertLink() {
+            const url = prompt("Enter URL:");
+            if (url) {
+                document.execCommand('createLink', false, url);
+            }
+            updateEditorFocus();
+        }
+        
+        function insertImage() {
+            const url = prompt("Enter image URL:");
+            if (url) {
+                document.execCommand('insertImage', false, url);
+            }
+            updateEditorFocus();
+        }
+        
+        function insertCode() {
+            const code = prompt("Enter code:");
+            if (code) {
+                document.execCommand('insertHTML', false, `<pre><code>${code}</code></pre>`);
+            }
+            updateEditorFocus();
+        }
+        
+        function insertHTML() {
+            const html = prompt("Enter HTML code:");
+            if (html) {
+                document.execCommand('insertHTML', false, html);
+            }
+            updateEditorFocus();
+        }
+        
+        function insertScript() {
+            const script = prompt("Enter JavaScript code:");
+            if (script) {
+                document.execCommand('insertHTML', false, `<script>${script}<\/script>`);
+            }
+            updateEditorFocus();
+        }
+        
+        function toggleView() {
+            const editor = document.getElementById('editor');
+            const toggleBtn = document.getElementById('toggleViewBtn');
+            
+            if (!isCodeView) {
+                // Switch to code view
+                editor.textContent = editor.innerHTML;
+                editor.style.fontFamily = 'Courier New, monospace';
+                editor.style.fontSize = '14px';
+                editor.style.backgroundColor = '#1f2937';
+                editor.style.color = '#f9fafb';
+                toggleBtn.innerHTML = '<i class="fas fa-eye-slash"></i>';
+                toggleBtn.title = 'Switch to WYSIWYG View';
+                isCodeView = true;
+            } else {
+                // Switch back to WYSIWYG view
+                editor.innerHTML = editor.textContent;
+                editor.style.fontFamily = 'Inter, sans-serif';
+                editor.style.fontSize = '16px';
+                editor.style.backgroundColor = 'white';
+                editor.style.color = 'inherit';
+                toggleBtn.innerHTML = '<i class="fas fa-eye"></i>';
+                toggleBtn.title = 'Switch to Code View';
+                isCodeView = false;
+            }
+            updateEditorFocus();
+        }
+        
+        function clearEditor() {
+            if (confirm('Are you sure you want to clear the editor? This cannot be undone.')) {
+                document.getElementById('editor').innerHTML = '<p>Start writing your post here...</p>';
+            }
+            updateEditorFocus();
+        }
+        
+        function updateEditorFocus() {
+            const editor = document.getElementById('editor');
             editor.focus();
             
-            // Add paste event listener to handle rich text
-            editor.addEventListener('paste', function(e) {
-                e.preventDefault();
-                const text = (e.clipboardData || window.clipboardData).getData('text/plain');
-                document.execCommand('insertText', false, text);
-            });
-            
-            // Add keyboard shortcuts
-            editor.addEventListener('keydown', function(e) {
-                // Ctrl+B for bold
-                if (e.ctrlKey && e.key === 'b') {
-                    e.preventDefault();
-                    formatText('bold');
-                }
-                // Ctrl+I for italic
-                if (e.ctrlKey && e.key === 'i') {
-                    e.preventDefault();
-                    formatText('italic');
-                }
-                // Ctrl+U for underline
-                if (e.ctrlKey && e.key === 'u') {
-                    e.preventDefault();
-                    formatText('underline');
-                }
-                // Ctrl+K for link
-                if (e.ctrlKey && e.key === 'k') {
-                    e.preventDefault();
-                    insertLink();
-                }
-            });
+            // Scroll to cursor position
+            const range = document.createRange();
+            const selection = window.getSelection();
+            range.selectNodeContents(editor);
+            range.collapse(false);
+            selection.removeAllRanges();
+            selection.addRange(range);
         }
-    });
-</script>
+        
+        function prepareSubmit() {
+            const editor = document.getElementById('editor');
+            document.getElementById('hidden-content').value = editor.innerHTML;
+            return true;
+        }
+        
+        // Enhanced editor initialization
+        document.addEventListener('DOMContentLoaded', function() {
+            const editor = document.getElementById('editor');
+            if (editor) {
+                // Set initial focus
+                editor.focus();
+                
+                // Add paste event listener to handle rich text
+                editor.addEventListener('paste', function(e) {
+                    e.preventDefault();
+                    const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+                    document.execCommand('insertText', false, text);
+                });
+                
+                // Add keyboard shortcuts
+                editor.addEventListener('keydown', function(e) {
+                    // Ctrl+B for bold
+                    if (e.ctrlKey && e.key === 'b') {
+                        e.preventDefault();
+                        formatText('bold');
+                    }
+                    // Ctrl+I for italic
+                    if (e.ctrlKey && e.key === 'i') {
+                        e.preventDefault();
+                        formatText('italic');
+                    }
+                    // Ctrl+U for underline
+                    if (e.ctrlKey && e.key === 'u') {
+                        e.preventDefault();
+                        formatText('underline');
+                    }
+                });
+            }
+        });
+    </script>
     <?php endif; ?>
 </body>
 </html>
