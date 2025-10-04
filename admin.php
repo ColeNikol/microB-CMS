@@ -1,5 +1,5 @@
 <?php
-// Admin Dashboard for MiniB
+// Admin Dashboard for MicroB CMS
 session_start();
 
 // Configuration
@@ -865,8 +865,8 @@ $stats = getDashboardStats();
     <div class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
         <div class="max-w-md w-full space-y-8 bg-white p-8 rounded-lg shadow-md">
             <div>
-                <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
-                    MiniB Admin
+                <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900"><img src="logo.png" width="64px">&nbsp;
+                    MicroB Admin
                 </h2>
                 <p class="mt-2 text-center text-sm text-gray-600">
                     Sign in to manage your blog
@@ -1813,4 +1813,5 @@ $stats = getDashboardStats();
     <?php endif; ?>
 </body>
 </html>
+
 
