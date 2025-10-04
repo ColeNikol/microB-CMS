@@ -77,9 +77,9 @@ function validateAdminInput($input, $type = 'string') {
             
         case 'html':
             // Allow safe HTML but strip dangerous tags
-            $allowed_tags = '<h1><h2><h3><h4><h5><h6><p><br><strong><b><em><i><u><ul><ol><li><a><img><div><span><code><pre><blockquote><script>';
+            $allowed_tags = '<h1><h2><h3><h4><h5><h6><p><br><strong><b><em><i><u><ul><ol><li><a><img><div><span><code><pre><blockquote>';
             $cleaned = strip_tags($input, $allowed_tags);
-            return htmlspecialchars($cleaned, ENT_QUOTES, 'UTF-8');
+            return $cleaned;
             
         case 'text':
         default:
@@ -120,6 +120,18 @@ function generateUniqueSlug($title, $existing_slug = null) {
     return $slug;
 }
 
+// Clear cache function
+function clearCache() {
+    if (file_exists(CACHE_DIR)) {
+        $files = glob(CACHE_DIR . '*');
+        foreach ($files as $file) {
+            if (is_file($file)) {
+                unlink($file);
+            }
+        }
+    }
+}
+
 // Handle logout
 function adminLogout() {
     // Clear cache
@@ -155,6 +167,10 @@ function adminLogout() {
     // Clear cookies
     setcookie('admin_logged_in', '', time() - 3600, '/');
     setcookie('csrf_token', '', time() - 3600, '/');
+    
+    // Redirect to homepage
+    header('Location: index.php');
+    exit;
 }
 
 // Handle login
@@ -198,8 +214,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
 // Handle logout
 if (isset($_GET['logout'])) {
     adminLogout();
-    header('Location: admin.php');
-    exit;
 }
 
 // Load posts data
@@ -306,6 +320,14 @@ if (isLoggedIn()) {
         exit;
     }
 
+    // Handle clear cache
+    if (isset($_GET['clear_cache'])) {
+        clearCache();
+        $action_message = 'Cache cleared successfully!';
+        header('Location: admin.php');
+        exit;
+    }
+
     // Handle post actions
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
@@ -317,7 +339,8 @@ if (isLoggedIn()) {
                 $description = validateAdminInput($_POST['description'], 'text');
                 $tags = validateAdminInput($_POST['tags'], 'tags');
                 $featured_image = validateAdminInput($_POST['featured_image'], 'url');
-                $content = $_POST['content'];
+                // Get content as raw HTML without validation to preserve all formatting
+                $content = $_POST['content'] ?? '';
                 
                 $slug = generateUniqueSlug($title);
                 
@@ -333,12 +356,33 @@ if (isLoggedIn()) {
                 // Add to beginning of posts array
                 array_unshift($posts, $new_post);
                 
-                if (!file_exists(POSTS_DIR)) {
-                    mkdir(POSTS_DIR, 0755, true);
-                }
-                file_put_contents(POSTS_DIR . $slug . '.html', $content);
+                // First, write data to posts.json file
+                $postsData['posts'] = $posts;
+                $jsonWriteSuccess = file_put_contents(POSTS_JSON, json_encode($postsData, JSON_PRETTY_PRINT));
                 
-                $action_message = 'Post added successfully!';
+                if ($jsonWriteSuccess === false) {
+                    $action_message = 'Error: Could not write to posts.json file!';
+                } else {
+                    // Then, create the HTML file only if JSON write was successful
+                    if (!file_exists(POSTS_DIR)) {
+                        mkdir(POSTS_DIR, 0755, true);
+                    }
+                    
+                    $htmlWriteSuccess = file_put_contents(POSTS_DIR . $slug . '.html', $content);
+                    
+                    if ($htmlWriteSuccess === false) {
+                        $action_message = 'Error: Post data saved but could not create HTML file!';
+                        // Roll back the posts.json changes if HTML file creation fails
+                        $posts = array_filter($posts, function($post) use ($slug) {
+                            return $post['slug'] !== $slug;
+                        });
+                        $postsData['posts'] = $posts;
+                        file_put_contents(POSTS_JSON, json_encode($postsData, JSON_PRETTY_PRINT));
+                    } else {
+                        $action_message = 'Post added successfully!';
+                        clearCache();
+                    }
+                }
             }
             
             // Update post
@@ -348,7 +392,8 @@ if (isLoggedIn()) {
                 $description = validateAdminInput($_POST['description'], 'text');
                 $tags = validateAdminInput($_POST['tags'], 'tags');
                 $featured_image = validateAdminInput($_POST['featured_image'], 'url');
-                $content = $_POST['content'];
+                // Get content as raw HTML without validation to preserve all formatting
+                $content = $_POST['content'] ?? '';
                 
                 $slug = ($title !== $posts[array_search($original_slug, array_column($posts, 'slug'))]['title']) 
                     ? generateUniqueSlug($title, $original_slug) 
@@ -366,16 +411,30 @@ if (isLoggedIn()) {
                     }
                 }
                 
-                // Update content file
-                if ($original_slug !== $slug) {
-                    $old_file = POSTS_DIR . $original_slug . '.html';
-                    if (file_exists($old_file)) {
-                        unlink($old_file);
+                // First, update posts.json file
+                $postsData['posts'] = $posts;
+                $jsonWriteSuccess = file_put_contents(POSTS_JSON, json_encode($postsData, JSON_PRETTY_PRINT));
+                
+                if ($jsonWriteSuccess === false) {
+                    $action_message = 'Error: Could not update posts.json file!';
+                } else {
+                    // Then, update content file only if JSON write was successful
+                    if ($original_slug !== $slug) {
+                        $old_file = POSTS_DIR . $original_slug . '.html';
+                        if (file_exists($old_file)) {
+                            unlink($old_file);
+                        }
+                    }
+                    
+                    $htmlWriteSuccess = file_put_contents(POSTS_DIR . $slug . '.html', $content);
+                    
+                    if ($htmlWriteSuccess === false) {
+                        $action_message = 'Error: Post data updated but could not update HTML file!';
+                    } else {
+                        $action_message = 'Post updated successfully!';
+                        clearCache();
                     }
                 }
-                file_put_contents(POSTS_DIR . $slug . '.html', $content);
-                
-                $action_message = 'Post updated successfully!';
             }
             
             // Generate robots.txt
@@ -420,11 +479,6 @@ if (isLoggedIn()) {
                 file_put_contents('sitemap.xml', $sitemap_content);
                 $action_message = 'sitemap.xml generated successfully!';
             }
-            
-            // Update posts JSON and clear cache
-            $postsData['posts'] = $posts;
-            file_put_contents(POSTS_JSON, json_encode($postsData, JSON_PRETTY_PRINT));
-            clearCache();
         }
     }
 
@@ -436,18 +490,24 @@ if (isLoggedIn()) {
             return $post['slug'] !== $slug_to_delete;
         });
         
-        $post_file = POSTS_DIR . $slug_to_delete . '.html';
-        if (file_exists($post_file)) {
-            unlink($post_file);
-        }
-        
+        // First, update posts.json file
         $postsData['posts'] = array_values($posts);
-        file_put_contents(POSTS_JSON, json_encode($postsData, JSON_PRETTY_PRINT));
-        clearCache();
+        $jsonWriteSuccess = file_put_contents(POSTS_JSON, json_encode($postsData, JSON_PRETTY_PRINT));
         
-        $action_message = 'Post deleted successfully!';
-        header('Location: admin.php');
-        exit;
+        if ($jsonWriteSuccess === false) {
+            $action_message = 'Error: Could not update posts.json file!';
+        } else {
+            // Then, delete the HTML file only if JSON write was successful
+            $post_file = POSTS_DIR . $slug_to_delete . '.html';
+            if (file_exists($post_file)) {
+                unlink($post_file);
+            }
+            
+            clearCache();
+            $action_message = 'Post deleted successfully!';
+            header('Location: admin.php');
+            exit;
+        }
     }
 
     // Handle image upload
@@ -457,8 +517,21 @@ if (isLoggedIn()) {
         }
         
         $file = $_FILES['image_upload'];
-        $filename = uniqid() . '_' . bin2hex(random_bytes(8)) . '_' . preg_replace('/[^a-zA-Z0-9\._-]/', '_', $file['name']);
+        // Use original filename without hash
+        $filename = preg_replace('/[^a-zA-Z0-9\._-]/', '_', $file['name']);
         $target_file = IMAGES_DIR . $filename;
+        
+        // Check if file already exists and create unique name if needed
+        $counter = 1;
+        $file_info = pathinfo($filename);
+        $base_name = $file_info['filename'];
+        $extension = isset($file_info['extension']) ? '.' . $file_info['extension'] : '';
+        
+        while (file_exists($target_file)) {
+            $filename = $base_name . '_' . $counter . $extension;
+            $target_file = IMAGES_DIR . $filename;
+            $counter++;
+        }
         
         // Check if image file is actual image
         $check = getimagesize($file['tmp_name']);
@@ -483,19 +556,6 @@ if (isLoggedIn()) {
             $action_message = 'File is not an image.';
         }
     }
-}
-
-// Clear cache function
-function clearCache() {
-    if (file_exists(CACHE_DIR . 'posts.cache')) {
-        unlink(CACHE_DIR . 'posts.cache');
-    }
-}
-
-// Clear auth cookies
-function clearAuthCookies() {
-    setcookie('admin_logged_in', '', time() - 3600, '/');
-    setcookie('csrf_token', '', time() - 3600, '/');
 }
 
 // Dashboard statistics
@@ -699,6 +759,103 @@ $stats = getDashboardStats();
             height: auto;
             border-radius: 0.5em;
             margin: 1em 0;
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            max-width: 90%;
+            max-height: 90%;
+            overflow: auto;
+        }
+        .modal-header {
+            padding: 1rem;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: between;
+            align-items: center;
+        }
+        .modal-body {
+            padding: 1rem;
+        }
+        .modal-footer {
+            padding: 1rem;
+            border-top: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.5rem;
+        }
+
+        /* Drag and Drop Styles */
+        .drop-zone {
+            border: 2px dashed #d1d5db;
+            border-radius: 0.5rem;
+            padding: 2rem;
+            text-align: center;
+            transition: all 0.3s;
+            background: #f9fafb;
+        }
+        .drop-zone.dragover {
+            border-color: #3b82f6;
+            background: #eff6ff;
+        }
+        .image-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 1rem;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .gallery-item {
+            border: 2px solid transparent;
+            border-radius: 0.5rem;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .gallery-item:hover {
+            border-color: #3b82f6;
+            transform: scale(1.05);
+        }
+        .gallery-item.selected {
+            border-color: #10b981;
+        }
+        .gallery-item img {
+            width: 100%;
+            height: 120px;
+            object-fit: cover;
+        }
+        .gallery-item-info {
+            padding: 0.5rem;
+            background: white;
+        }
+
+        /* Link Options Grid */
+        .link-options-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        .link-option-group {
+            background: #f8fafc;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid #e2e8f0;
         }
     </style>
 </head>
@@ -1035,10 +1192,10 @@ $stats = getDashboardStats();
                                         </div>
                                         
                                         <div class="toolbar-group">
-                                            <button type="button" onclick="insertLink()" class="toolbar-btn" title="Insert Link">
+                                            <button type="button" onclick="showLinkModal()" class="toolbar-btn" title="Insert Link">
                                                 <i class="fas fa-link"></i>
                                             </button>
-                                            <button type="button" onclick="insertImage()" class="toolbar-btn" title="Insert Image">
+                                            <button type="button" onclick="showImageModal()" class="toolbar-btn" title="Insert Image">
                                                 <i class="fas fa-image"></i>
                                             </button>
                                         </div>
@@ -1049,9 +1206,6 @@ $stats = getDashboardStats();
                                             </button>
                                             <button type="button" onclick="insertHTML()" class="toolbar-btn" title="Insert HTML">
                                                 <i class="fab fa-html5"></i>
-                                            </button>
-                                            <button type="button" onclick="insertScript()" class="toolbar-btn" title="Insert JavaScript">
-                                                <i class="fab fa-js"></i>
                                             </button>
                                         </div>
                                         
@@ -1181,9 +1335,158 @@ $stats = getDashboardStats();
         </div>
     </div>
 
+    <!-- Link Modal -->
+    <div id="linkModal" class="modal">
+        <div class="modal-content w-full max-w-2xl">
+            <div class="modal-header">
+                <h3 class="text-lg font-semibold">Insert Link</h3>
+                <button type="button" onclick="closeLinkModal()" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="space-y-6">
+                    <!-- Basic Link Information -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Link URL *</label>
+                            <input type="text" id="linkUrl" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="https://example.com" required>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Link Text</label>
+                            <input type="text" id="linkText" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Click here">
+                        </div>
+                    </div>
+
+                    <!-- Link Options Grid -->
+                    <div class="link-options-grid">
+                        <div class="link-option-group">
+                            <h4 class="text-sm font-medium text-gray-900 mb-3">Link Behavior</h4>
+                            <div class="space-y-2">
+                                <label class="flex items-center">
+                                    <input type="checkbox" id="linkNewTab" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mr-2">
+                                    <span class="text-sm text-gray-700">Open in new tab</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="link-option-group">
+                            <h4 class="text-sm font-medium text-gray-900 mb-3">SEO & Security</h4>
+                            <div class="space-y-2">
+                                <label class="flex items-center">
+                                    <input type="checkbox" id="linkNoFollow" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mr-2">
+                                    <span class="text-sm text-gray-700">rel="nofollow"</span>
+                                </label>
+                                <label class="flex items-center">
+                                    <input type="checkbox" id="linkNoOpener" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mr-2">
+                                    <span class="text-sm text-gray-700">rel="noopener"</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Links Section -->
+                    <div class="border-t pt-4">
+                        <h4 class="text-md font-medium text-gray-900 mb-3">Quick Links to Existing Posts</h4>
+                        <div class="max-h-48 overflow-y-auto border border-gray-200 rounded-lg">
+                            <div class="divide-y divide-gray-200">
+                                <?php foreach ($posts as $post): ?>
+                                <label class="flex items-center px-4 py-3 hover:bg-gray-50 cursor-pointer">
+                                    <input type="radio" name="post_link" value="/<?php echo htmlspecialchars($post['slug']); ?>" class="post-link-radio rounded border-gray-300 text-blue-600 focus:ring-blue-500 mr-3">
+                                    <div class="flex-1">
+                                        <span class="text-sm font-medium text-gray-900"><?php echo htmlspecialchars($post['title']); ?></span>
+                                        <p class="text-xs text-gray-500 mt-1">/<?php echo htmlspecialchars($post['slug']); ?></p>
+                                    </div>
+                                </label>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" onclick="closeLinkModal()" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition duration-150">Cancel</button>
+                <button type="button" onclick="insertLink()" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 transition duration-150">Insert Link</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Image Modal -->
+    <div id="imageModal" class="modal">
+        <div class="modal-content w-4/5 max-w-6xl">
+            <div class="modal-header">
+                <h3 class="text-lg font-semibold">Insert Image</h3>
+                <button type="button" onclick="closeImageModal()" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <!-- Upload Section -->
+                    <div class="space-y-6">
+                        <div>
+                            <h4 class="text-md font-medium mb-4">Upload New Image</h4>
+                            <div id="dropZone" class="drop-zone">
+                                <i class="fas fa-cloud-upload-alt text-4xl text-gray-400 mb-3"></i>
+                                <p class="text-gray-600 font-medium">Drag & drop your image here</p>
+                                <p class="text-sm text-gray-500 mt-2">or</p>
+                                <input type="file" id="imageUpload" accept="image/*" class="hidden">
+                                <button type="button" onclick="document.getElementById('imageUpload').click()" class="mt-3 px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition duration-150">
+                                    Choose File
+                                </button>
+                                <p class="text-xs text-gray-500 mt-3">Supported formats: JPG, JPEG, PNG, GIF, WEBP</p>
+                            </div>
+                        </div>
+                        
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Alt Text (Recommended)</label>
+                                <input type="text" id="imageAlt" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Description of the image for accessibility">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Image URL</label>
+                                <input type="text" id="imageUrl" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="https://example.com/image.jpg">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Gallery Section -->
+                    <div>
+                        <h4 class="text-md font-medium mb-4">Choose from Gallery</h4>
+                        <div class="image-gallery" id="imageGallery">
+                            <?php
+                            if (file_exists(IMAGES_DIR)) {
+                                $images = glob(IMAGES_DIR . "*.{jpg,jpeg,png,gif,webp}", GLOB_BRACE);
+                                foreach ($images as $image) {
+                                    $image_url = $image;
+                                    $image_name = basename($image);
+                                    echo '<div class="gallery-item" data-url="' . $image_url . '" data-name="' . $image_name . '">';
+                                    echo '<img src="' . $image_url . '" alt="' . $image_name . '" class="w-full h-32 object-cover">';
+                                    echo '<div class="gallery-item-info">';
+                                    echo '<p class="text-xs text-gray-600 truncate">' . $image_name . '</p>';
+                                    echo '</div>';
+                                    echo '</div>';
+                                }
+                            } else {
+                                echo '<p class="text-gray-500 col-span-full text-center py-8">No images in gallery</p>';
+                            }
+                            ?>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" onclick="closeImageModal()" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition duration-150">Cancel</button>
+                <button type="button" onclick="insertImageFromModal()" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 transition duration-150">Insert Image</button>
+            </div>
+        </div>
+    </div>
+
     <!-- JavaScript for Enhanced Custom Editor -->
     <script>
         let isCodeView = false;
+        let selectedImageUrl = '';
+        let selectedImageAlt = '';
         
         function formatText(command) {
             document.execCommand(command, false, null);
@@ -1200,20 +1503,200 @@ $stats = getDashboardStats();
             updateEditorFocus();
         }
         
-        function insertLink() {
-            const url = prompt("Enter URL:");
-            if (url) {
-                document.execCommand('createLink', false, url);
-            }
-            updateEditorFocus();
+        // Enhanced Link Functions
+        function showLinkModal() {
+            document.getElementById('linkModal').style.display = 'flex';
         }
         
-        function insertImage() {
-            const url = prompt("Enter image URL:");
-            if (url) {
-                document.execCommand('insertImage', false, url);
+        function closeLinkModal() {
+            document.getElementById('linkModal').style.display = 'none';
+            // Reset form
+            document.getElementById('linkUrl').value = '';
+            document.getElementById('linkText').value = '';
+            document.getElementById('linkNewTab').checked = false;
+            document.getElementById('linkNoFollow').checked = false;
+            document.getElementById('linkNoOpener').checked = false;
+            // Uncheck all post links
+            document.querySelectorAll('.post-link-radio').forEach(radio => radio.checked = false);
+        }
+        
+        function insertLink() {
+            const urlInput = document.getElementById('linkUrl');
+            const textInput = document.getElementById('linkText');
+            let url = urlInput.value;
+            const text = textInput.value || url;
+            const newTab = document.getElementById('linkNewTab').checked;
+            const noFollow = document.getElementById('linkNoFollow').checked;
+            const noOpener = document.getElementById('linkNoOpener').checked;
+            
+            // Check if a post link is selected
+            const selectedPostLink = document.querySelector('.post-link-radio:checked');
+            if (selectedPostLink) {
+                url = selectedPostLink.value;
+                if (!urlInput.value) {
+                    urlInput.value = url;
+                }
             }
-            updateEditorFocus();
+            
+            if (url) {
+                let relAttributes = [];
+                if (noFollow) relAttributes.push('nofollow');
+                if (noOpener) relAttributes.push('noopener');
+                
+                let linkHtml = `<a href="${url}"`;
+                if (newTab) linkHtml += ' target="_blank"';
+                if (relAttributes.length > 0) linkHtml += ` rel="${relAttributes.join(' ')}"`;
+                linkHtml += `>${text}</a>`;
+                
+                // Use insertHTML to properly insert the link with all attributes
+                document.execCommand('insertHTML', false, linkHtml);
+                closeLinkModal();
+                updateEditorFocus();
+            } else {
+                alert('Please enter a URL or select a post link.');
+            }
+        }
+        
+        // Enhanced Image Functions
+        function showImageModal() {
+            document.getElementById('imageModal').style.display = 'flex';
+            selectedImageUrl = '';
+            selectedImageAlt = '';
+        }
+        
+        function closeImageModal() {
+            document.getElementById('imageModal').style.display = 'none';
+            // Reset form
+            document.getElementById('imageAlt').value = '';
+            document.getElementById('imageUrl').value = '';
+            // Clear selection
+            document.querySelectorAll('.gallery-item').forEach(item => item.classList.remove('selected'));
+        }
+        
+        function insertImageFromModal() {
+            const alt = document.getElementById('imageAlt').value;
+            const url = document.getElementById('imageUrl').value || selectedImageUrl;
+            
+            if (url) {
+                const imgHtml = `<img src="${url}" alt="${alt || ''}" style="max-width: 100%; height: auto; border-radius: 0.5em; margin: 1em 0;">`;
+                document.execCommand('insertHTML', false, imgHtml);
+                closeImageModal();
+                updateEditorFocus();
+            } else {
+                alert('Please select an image from the gallery or enter an image URL.');
+            }
+        }
+        
+        // Drag and Drop functionality
+        function initializeDragAndDrop() {
+            const dropZone = document.getElementById('dropZone');
+            const fileInput = document.getElementById('imageUpload');
+            
+            // Prevent default drag behaviors
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, preventDefaults, false);
+                document.body.addEventListener(eventName, preventDefaults, false);
+            });
+            
+            // Highlight drop zone when item is dragged over it
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, highlight, false);
+            });
+            
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, unhighlight, false);
+            });
+            
+            // Handle dropped files
+            dropZone.addEventListener('drop', handleDrop, false);
+            
+            // Handle file input change
+            fileInput.addEventListener('change', handleFileSelect, false);
+            
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            
+            function highlight() {
+                dropZone.classList.add('dragover');
+            }
+            
+            function unhighlight() {
+                dropZone.classList.remove('dragover');
+            }
+            
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                handleFiles(files);
+            }
+            
+            function handleFileSelect(e) {
+                const files = e.target.files;
+                handleFiles(files);
+            }
+            
+            function handleFiles(files) {
+                if (files.length > 0) {
+                    const file = files[0];
+                    if (file.type.startsWith('image/')) {
+                        uploadImage(file);
+                    } else {
+                        alert('Please select an image file.');
+                    }
+                }
+            }
+        }
+        
+        function uploadImage(file) {
+            const formData = new FormData();
+            formData.append('image_upload', file);
+            formData.append('csrf_token', document.querySelector('input[name="csrf_token"]').value);
+            
+            fetch('admin.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.text())
+            .then(() => {
+                // Reload the page to show the new image
+                location.reload();
+            })
+            .catch(error => {
+                console.error('Error uploading image:', error);
+                alert('Error uploading image. Please try again.');
+            });
+        }
+        
+        // Gallery selection
+        function initializeGallery() {
+            const galleryItems = document.querySelectorAll('.gallery-item');
+            galleryItems.forEach(item => {
+                item.addEventListener('click', function() {
+                    // Remove selection from all items
+                    galleryItems.forEach(i => i.classList.remove('selected'));
+                    // Add selection to clicked item
+                    this.classList.add('selected');
+                    // Set the selected image URL and alt text
+                    selectedImageUrl = this.getAttribute('data-url');
+                    selectedImageAlt = this.getAttribute('data-name');
+                    document.getElementById('imageUrl').value = selectedImageUrl;
+                    document.getElementById('imageAlt').value = selectedImageAlt;
+                });
+            });
+        }
+        
+        // Quick links selection
+        function initializeQuickLinks() {
+            const postLinks = document.querySelectorAll('.post-link-radio');
+            postLinks.forEach(radio => {
+                radio.addEventListener('change', function() {
+                    if (this.checked) {
+                        document.getElementById('linkUrl').value = this.value;
+                    }
+                });
+            });
         }
         
         function insertCode() {
@@ -1228,14 +1711,6 @@ $stats = getDashboardStats();
             const html = prompt("Enter HTML code:");
             if (html) {
                 document.execCommand('insertHTML', false, html);
-            }
-            updateEditorFocus();
-        }
-        
-        function insertScript() {
-            const script = prompt("Enter JavaScript code:");
-            if (script) {
-                document.execCommand('insertHTML', false, `<script>${script}<\/script>`);
             }
             updateEditorFocus();
         }
@@ -1290,6 +1765,7 @@ $stats = getDashboardStats();
         
         function prepareSubmit() {
             const editor = document.getElementById('editor');
+            // Get the raw HTML content from the editor
             document.getElementById('hidden-content').value = editor.innerHTML;
             return true;
         }
@@ -1327,6 +1803,11 @@ $stats = getDashboardStats();
                     }
                 });
             }
+            
+            // Initialize enhanced features
+            initializeDragAndDrop();
+            initializeGallery();
+            initializeQuickLinks();
         });
     </script>
     <?php endif; ?>
